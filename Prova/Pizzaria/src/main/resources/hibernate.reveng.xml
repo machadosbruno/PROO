@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+Click nbfs://nbhost/SystemFileSystem/Templates/Licenses/license-default.txt to change this license
+Click nbfs://nbhost/SystemFileSystem/Templates/XML/XMLDocument.xml to edit this template
+-->
+<!DOCTYPE hibernate-reverse-engineering SYSTEM "src/main/resources/dtd/hibernate-reverse-engineering-3.0.dtd">
+
+<hibernate-reverse-engineering>
+    
+    <table-filter match-name="clientes"/>
+    <table-filter match-name="ingredientes"/>
+    <table-filter match-name="pedido"/>
+    <table-filter match-name="pedidopizza"/>
+    <table-filter match-name="pizza"/>
+    <table-filter match-name="usuarios"/>
+
+</hibernate-reverse-engineering>

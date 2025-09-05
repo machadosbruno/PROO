@@ -1,0 +1,4 @@
+mvn clean install
+mvn clean generate-sources
+mvn dependency:go-offline
+--offline
