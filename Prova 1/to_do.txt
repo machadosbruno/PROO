@@ -1,0 +1,8 @@
+Classes: 
+ - Cliente
+ - Animal
+ - Serviço
+
+Telas
+ - CRUD completo das classes
+ - Tela principal

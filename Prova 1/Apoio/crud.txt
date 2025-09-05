@@ -1,0 +1,298 @@
+Com certeza\! Construir um CRUD é a melhor forma de juntar todos os conceitos que vimos: a classe **Entidade**, a configuração do **Hibernate** e a organização do código com o padrão **DAO (Data Access Object)**.
+
+O padrão DAO é excelente porque ele separa a lógica de acesso a dados (como `session.save()`, `session.get()`, etc.) da lógica de negócio da sua aplicação.
+
+Vamos construir um CRUD completo para uma entidade `Produto` em uma aplicação de console.
+
+-----
+
+### Visão Geral da Estrutura
+
+Teremos os seguintes arquivos:
+
+1.  **SQL (`database.sql`):** O script para criar nosso banco e tabela no MySQL.
+2.  **Entidade (`Produto.java`):** A classe que mapeia a tabela `produtos`.
+3.  **Configuração (`hibernate.cfg.xml`):** O arquivo que ensina o Hibernate a se conectar com o MySQL.
+4.  **Utilitário (`HibernateUtil.java`):** Uma classe para gerenciar o `SessionFactory` (boa prática).
+5.  **Interface DAO (`ProdutoDAO.java`):** O "contrato" que define quais operações CRUD são possíveis.
+6.  **Implementação DAO (`ProdutoDAOImpl.java`):** A classe que implementa o contrato usando Hibernate.
+7.  **Aplicação Principal (`MainApp.java`):** Nossa classe com o método `main` para testar tudo.
+
+-----
+
+### Passo 1: Preparar o Banco de Dados MySQL
+
+Primeiro, crie um banco de dados no seu MySQL (pode ser pelo terminal ou uma ferramenta como o DBeaver/Workbench). Em seguida, execute o script SQL para criar a tabela.
+
+**Arquivo `database.sql`:**
+
+```sql
+-- Crie um banco de dados (se ainda não existir)
+CREATE DATABASE IF NOT EXISTS `db_crud_hibernate`;
+
+-- Use o banco de dados criado
+USE `db_crud_hibernate`;
+
+-- Crie a tabela para nossos produtos
+CREATE TABLE IF NOT EXISTS `produtos` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT,
+  `nome` VARCHAR(255) NOT NULL,
+  `preco` DECIMAL(10, 2) NOT NULL,
+  PRIMARY KEY (`id`)
+);
+```
+
+-----
+
+### Passo 2: A Classe de Entidade (`Produto.java`)
+
+Esta é a representação Java da nossa tabela `produtos`.
+
+```java
+import javax.persistence.*;
+
+@Entity
+@Table(name = "produtos")
+public class Produto {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Column(name = "nome", nullable = false)
+    private String nome;
+
+    @Column(name = "preco", nullable = false)
+    private double preco;
+
+    // Construtor padrão é exigido pelo Hibernate
+    public Produto() {}
+
+    public Produto(String nome, double preco) {
+        this.nome = nome;
+        this.preco = preco;
+    }
+
+    // Getters e Setters para todos os campos
+    public Long getId() { return id; }
+    public void setId(Long id) { this.id = id; }
+    public String getNome() { return nome; }
+    public void setNome(String nome) { this.nome = nome; }
+    public double getPreco() { return preco; }
+    public void setPreco(double preco) { this.preco = preco; }
+
+    @Override
+    public String toString() {
+        return "Produto [id=" + id + ", nome='" + nome + "', preco=" + preco + "]";
+    }
+}
+```
+
+-----
+
+### Passo 3: Configuração do Hibernate (`hibernate.cfg.xml`)
+
+Este arquivo deve ficar na pasta `src/main/resources`. **Ajuste a URL, usuário e senha para o seu ambiente.**
+
+```xml
+<!DOCTYPE hibernate-configuration PUBLIC
+        "-//Hibernate/Hibernate Configuration DTD 3.0//EN"
+        "http://www.hibernate.org/dtd/hibernate-configuration-3.0.dtd">
+<hibernate-configuration>
+    <session-factory>
+        <property name="hibernate.connection.driver_class">com.mysql.cj.jdbc.Driver</property>
+        <property name="hibernate.connection.url">jdbc:mysql://localhost:3306/db_crud_hibernate?useSSL=false&amp;serverTimezone=UTC</property>
+        <property name="hibernate.connection.username">root</property>
+        <property name="hibernate.connection.password">seu_password_aqui</property> <property name="hibernate.dialect">org.hibernate.dialect.MySQL8Dialect</property>
+
+        <property name="show_sql">true</property>
+        <property name="format_sql">true</property>
+        
+        <property name="hbm2ddl.auto">update</property>
+
+        <mapping class="Produto"/>
+    </session-factory>
+</hibernate-configuration>
+```
+
+-----
+
+### Passo 4: Utilitário do Hibernate (`HibernateUtil.java`)
+
+Esta classe garante que o `SessionFactory` (um objeto caro) seja criado apenas uma vez na aplicação.
+
+```java
+import org.hibernate.SessionFactory;
+import org.hibernate.cfg.Configuration;
+
+public class HibernateUtil {
+    // A SessionFactory é criada apenas uma vez para a aplicação inteira.
+    private static final SessionFactory sessionFactory = buildSessionFactory();
+
+    private static SessionFactory buildSessionFactory() {
+        try {
+            // Cria a SessionFactory a partir do arquivo hibernate.cfg.xml
+            return new Configuration().configure().buildSessionFactory();
+        } catch (Throwable ex) {
+            System.err.println("Criação inicial da SessionFactory falhou." + ex);
+            throw new ExceptionInInitializerError(ex);
+        }
+    }
+
+    public static SessionFactory getSessionFactory() {
+        return sessionFactory;
+    }
+
+    public static void shutdown() {
+        // Fecha caches e pools de conexão
+        getSessionFactory().close();
+    }
+}
+```
+
+-----
+
+### Passo 5: A Interface e Implementação do DAO
+
+Aqui separamos o "o quê" do "como".
+
+**Interface `ProdutoDAO.java` (O Contrato):**
+
+```java
+import java.util.List;
+
+public interface ProdutoDAO {
+    void salvar(Produto produto);
+    Produto buscarPorId(Long id);
+    List<Produto> listarTodos();
+    void atualizar(Produto produto);
+    void deletar(Long id);
+}
+```
+
+**Implementação `ProdutoDAOImpl.java` (O Trabalho Pesado com Hibernate):**
+
+```java
+import org.hibernate.Session;
+import org.hibernate.Transaction;
+import java.util.List;
+
+public class ProdutoDAOImpl implements ProdutoDAO {
+
+    @Override
+    public void salvar(Produto produto) {
+        Transaction transaction = null;
+        try (Session session = HibernateUtil.getSessionFactory().openSession()) {
+            transaction = session.beginTransaction();
+            session.save(produto);
+            transaction.commit();
+        } catch (Exception e) {
+            if (transaction != null) transaction.rollback();
+            e.printStackTrace();
+        }
+    }
+
+    @Override
+    public Produto buscarPorId(Long id) {
+        try (Session session = HibernateUtil.getSessionFactory().openSession()) {
+            return session.get(Produto.class, id);
+        }
+    }
+
+    @Override
+    public List<Produto> listarTodos() {
+        try (Session session = HibernateUtil.getSessionFactory().openSession()) {
+            // HQL (Hibernate Query Language) para buscar todos os objetos Produto
+            return session.createQuery("FROM Produto", Produto.class).list();
+        }
+    }
+
+    @Override
+    public void atualizar(Produto produto) {
+        Transaction transaction = null;
+        try (Session session = HibernateUtil.getSessionFactory().openSession()) {
+            transaction = session.beginTransaction();
+            session.update(produto);
+            transaction.commit();
+        } catch (Exception e) {
+            if (transaction != null) transaction.rollback();
+            e.printStackTrace();
+        }
+    }
+
+    @Override
+    public void deletar(Long id) {
+        Transaction transaction = null;
+        try (Session session = HibernateUtil.getSessionFactory().openSession()) {
+            transaction = session.beginTransaction();
+            Produto produto = session.get(Produto.class, id);
+            if (produto != null) {
+                session.delete(produto);
+            }
+            transaction.commit();
+        } catch (Exception e) {
+            if (transaction != null) transaction.rollback();
+            e.printStackTrace();
+        }
+    }
+}
+```
+
+-----
+
+### Passo 6: Aplicação Principal para Teste (`MainApp.java`)
+
+Finalmente, vamos usar nosso DAO para executar o CRUD.
+
+```java
+import java.util.List;
+
+public class MainApp {
+    public static void main(String[] args) {
+        // A lógica de negócio usa a interface, não a implementação.
+        ProdutoDAO produtoDAO = new ProdutoDAOImpl();
+
+        // 1. CREATE: Salvar um novo produto
+        System.out.println("--- Criando produtos... ---");
+        Produto notebook = new Produto("Notebook Gamer", 7500.00);
+        Produto mouse = new Produto("Mouse sem Fio", 150.50);
+        produtoDAO.salvar(notebook);
+        produtoDAO.salvar(mouse);
+        System.out.println("Produtos criados com sucesso!");
+
+        // 2. READ: Listar todos os produtos
+        System.out.println("\n--- Listando todos os produtos... ---");
+        List<Produto> produtos = produtoDAO.listarTodos();
+        for (Produto p : produtos) {
+            System.out.println(p);
+        }
+
+        // 3. READ: Buscar um produto por ID
+        System.out.println("\n--- Buscando produto com ID 1... ---");
+        Produto produtoBuscado = produtoDAO.buscarPorId(1L);
+        System.out.println("Encontrado: " + produtoBuscado);
+
+        // 4. UPDATE: Atualizar o preço do produto buscado
+        if (produtoBuscado != null) {
+            System.out.println("\n--- Atualizando preço do produto ID 1... ---");
+            produtoBuscado.setPreco(7299.99);
+            produtoDAO.atualizar(produtoBuscado);
+            System.out.println("Produto atualizado: " + produtoDAO.buscarPorId(1L));
+        }
+
+        // 5. DELETE: Deletar o produto com ID 2
+        System.out.println("\n--- Deletando produto com ID 2... ---");
+        produtoDAO.deletar(2L);
+        System.out.println("Produto deletado. Lista atualizada:");
+        produtos = produtoDAO.listarTodos(); // Lista novamente para confirmar
+        for (Produto p : produtos) {
+            System.out.println(p);
+        }
+
+        // Fecha a SessionFactory ao final da aplicação
+        HibernateUtil.shutdown();
+    }
+}
+```
+
+Com todos esses arquivos, você tem um exemplo completo, robusto e bem estruturado de um CRUD usando as melhores práticas de mercado com Java, Hibernate e o padrão DAO.
